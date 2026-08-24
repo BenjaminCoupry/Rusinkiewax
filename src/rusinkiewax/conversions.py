@@ -1,4 +1,5 @@
 import jax
+import rusinkiewax.bases as bases
 
 def spherical_to_cartesian(spherical):
     """Convert spherical coordinates to cartesian coordinates.
@@ -59,87 +60,6 @@ def cartesian_to_spherical(cartesian):
     return spherical
 
 
-def spherical_local_base(spherical):
-    """Compute the local orthonormal basis associated with spherical coordinates.
-
-    Parameters
-    ----------
-    spherical : array_like, (3, )
-        Spherical coordinates ``(rho, theta, phi)``. The radial coordinate
-        ``rho`` does not affect the resulting basis.
-
-    Returns
-    -------
-    orthonormal_base : jax.Array, (3, 3)
-        Local orthonormal basis whose columns are, in order,
-
-        - ``u_rho``: radial direction,
-        - ``u_theta``: direction of increasing polar angle ``theta``,
-        - ``u_phi``: direction of increasing azimuthal angle ``phi``.
-
-        The basis is expressed in cartesian coordinates.
-    """
-    _, theta, phi = jax.numpy.unstack(spherical, axis=-1)
-    u_rho = jax.numpy.asarray([
-        jax.numpy.sin(theta) * jax.numpy.cos(phi),
-        jax.numpy.sin(theta) * jax.numpy.sin(phi),
-        jax.numpy.cos(theta),
-    ])
-    u_theta = jax.numpy.asarray([
-        jax.numpy.cos(theta) * jax.numpy.cos(phi),
-        jax.numpy.cos(theta) * jax.numpy.sin(phi),
-        -jax.numpy.sin(theta),
-    ])
-    u_phi = jax.numpy.asarray([
-        -jax.numpy.sin(phi),
-        jax.numpy.cos(phi),
-        0,
-    ])
-    orthonormal_base = jax.numpy.stack(
-        [u_rho, u_theta, u_phi],
-        axis=-1,
-    )
-    return orthonormal_base
-
-
-def complete_base(partial_base):
-    """Complete a pair of non-collinear vectors into an orthonormal basis.
-
-    The first vector is preserved as the first basis vector. The second
-    vector is orthogonalized with respect to the first one, and the third
-    vector is obtained from their cross product.
-
-    Parameters
-    ----------
-    partial_base : array_like, (3, 2)
-        Two non-collinear vectors stored as columns.
-
-    Returns
-    -------
-    orthonormal_base : jax.Array, (3, 3)
-        Orthonormal basis whose first column is the normalized first input
-        vector, whose second column is the orthogonalized and normalized
-        second input vector, and whose third column is their cross product.
-
-    Notes
-    -----
-    The input vectors must be non-zero and non-collinear.
-    """
-    u, v = jax.numpy.unstack(partial_base, axis=-1)
-    w = jax.numpy.cross(u, v)
-    v = jax.numpy.cross(w, u)
-    orthogonal_base = jax.numpy.stack([u, v, w], axis=-1)
-    orthonormal_base = (
-        orthogonal_base
-        / jax.numpy.linalg.vector_norm(
-            orthogonal_base,
-            axis=-2,
-            keepdims=True,
-        )
-    )
-    return orthonormal_base
-
-
 def cartesian_to_rusinkiewicz(w_i, w_o, normal, tangent):
     """Convert incident and outgoing directions to Rusinkiewicz coordinates.
 
@@ -151,20 +71,23 @@ def cartesian_to_rusinkiewicz(w_i, w_o, normal, tangent):
         Outgoing direction in cartesian coordinates.
     normal : array_like, (3, )
         Surface normal defining the first axis of the local reference frame.
-    tangent : array_like, (3, )
+    tangent : array_like, (3, ), optional
         Tangent vector used together with ``normal`` to define the local
-        reference frame. The two vectors must be non-collinear.
+        reference frame. The two vectors must be non-collinear. If
+        ``None``, an arbitrary tangent is chosen via ``orthogonal(normal)``,
+        and ``phi_h`` is returned as ``None`` since it is not meaningful
+        without a well-defined tangent.
 
     Returns
     -------
     theta_h : jax.Array, (, )
         Polar angle of the half-vector.
     phi_h : jax.Array, (, )
-        Azimuthal angle of the half-vector.
+        Azimuthal angle of the half-vector. ``None`` if ``tangent`` was not provided.
     theta_d : jax.Array, (, )
         Polar angle of the incident direction expressed in the half-vector
         local frame.
-    phi_d : jax.Array, (, )
+    phi_d : jax.Array, (, ) or None
         Azimuthal angle of the incident direction expressed in the
         half-vector local frame.
 
@@ -174,8 +97,14 @@ def cartesian_to_rusinkiewicz(w_i, w_o, normal, tangent):
     ``w_o``. Therefore, the conversion is undefined when
     ``w_i = -w_o``.
     """
+    if tangent is None:
+        none_tangent = True
+        tangent = bases.orthogonal(normal)
+    else:
+        none_tangent = False
+    
     local_base = jax.numpy.roll(
-        complete_base(
+        bases.complete_base(
             jax.numpy.stack([normal, tangent], axis=-1)
         ),
         -1,
@@ -194,7 +123,7 @@ def cartesian_to_rusinkiewicz(w_i, w_o, normal, tangent):
         axis=-1,
     )
     half_base = local_base @ jax.numpy.roll(
-        spherical_local_base(
+        bases.spherical_local_base(
             jax.numpy.stack([1.0, theta_h, phi_h])
         ),
         -1,
@@ -204,6 +133,10 @@ def cartesian_to_rusinkiewicz(w_i, w_o, normal, tangent):
         cartesian_to_spherical(half_base.T @ w_i),
         axis=-1,
     )
+    
+    if none_tangent:
+        phi_h = None
+    
     return theta_h, phi_h, theta_d, phi_d
 
 
@@ -221,9 +154,11 @@ def rusinkiewicz_to_cartesian(
     ----------
     theta_h : array_like, (, )
         Polar angle of the half-vector, in the range ``[0, pi / 2]``.
-    phi_h : array_like, (, )
+    phi_h : array_like, (, ), optional
         Azimuthal angle of the half-vector, in the range
-        ``[0, 2 * pi]``.
+        ``[0, 2 * pi]``. If both ``phi_h`` and ``tangent`` are ``None``,
+        ``phi_h`` is set to zero, consistent with an arbitrary tangent
+        choice.
     theta_d : array_like, (, )
         Polar angle of the incident direction in the half-vector local
         frame, in the range ``[0, pi / 2]``.
@@ -232,9 +167,11 @@ def rusinkiewicz_to_cartesian(
         local frame, in the range ``[0, 2 * pi]``.
     normal : array_like, (3, )
         Surface normal defining the first axis of the local reference frame.
-    tangent : array_like, (3, )
+    tangent : array_like, (3, ), optional
         Tangent vector used together with ``normal`` to define the local
-        reference frame. The two vectors must be non-collinear.
+        reference frame. The two vectors must be non-collinear. If both
+        ``tangent`` and ``phi_h`` are ``None``, an arbitrary tangent is
+        chosen via ``orthogonal(normal)``.
 
     Returns
     -------
@@ -249,15 +186,23 @@ def rusinkiewicz_to_cartesian(
     direction by ``pi`` in the azimuthal coordinate of the half-vector
     local frame.
     """
+    if tangent is None and phi_h is None:
+        tangent = bases.orthogonal(normal)
+        phi_h = 0.0
+    elif tangent is None or phi_h is None:
+        raise ValueError(
+            "tangent and phi_h must either both be provided or both be None."
+        )
+        
     local_base = jax.numpy.roll(
-        complete_base(
+        bases.complete_base(
             jax.numpy.stack([normal, tangent], axis=-1)
         ),
         -1,
         axis=-1,
     )
     half_base = local_base @ jax.numpy.roll(
-        spherical_local_base(
+        bases.spherical_local_base(
             jax.numpy.stack([1.0, theta_h, phi_h])
         ),
         -1,
@@ -276,66 +221,3 @@ def rusinkiewicz_to_cartesian(
 
     return w_i, w_o
 
-
-def helmholtz_symmetry(theta_h, phi_h, theta_d, phi_d):
-    """Fold the Rusinkiewicz difference azimuth into its Helmholtz-symmetric range.
-
-    Exploits the Helmholtz reciprocity of the BRDF, which under the
-    Rusinkiewicz parametrization is equivalent to invariance under
-    ``phi_d -> phi_d + pi (mod 2 * pi)``. As a consequence, ``phi_d`` can be
-    folded from its native range ``[0, 2 * pi)`` into ``[0, pi)`` without
-    loss of information about the BRDF value.
-
-    Parameters
-    ----------
-    theta_h : array_like, (, )
-        Polar angle of the half-vector. Passed through unchanged.
-    phi_h : array_like, (, )
-        Azimuthal angle of the half-vector. Passed through unchanged.
-    theta_d : array_like, (, )
-        Polar angle of the incident direction in the half-vector local
-        frame. Passed through unchanged.
-    phi_d : array_like, (, )
-        Azimuthal angle of the incident direction in the half-vector
-        local frame, in the range ``[0, 2 * pi)``.
-
-    Returns
-    -------
-    theta_h : jax.Array, (, )
-    phi_h : jax.Array, (, )
-    theta_d : jax.Array, (, )
-    phi_d : jax.Array, (, )
-        Folded azimuthal angle, in the range ``[0, pi)``.
-    """
-    phi_d = jax.numpy.mod(phi_d, jax.numpy.pi)
-    return theta_h, phi_h, theta_d, phi_d
-
-def isotropic_material(theta_h, theta_d, phi_d):
-    """Drop the dependence on the half-vector azimuth for isotropic materials.
-
-    For an isotropic material, the BRDF is invariant under rotation about
-    the surface normal, so it does not depend on the absolute azimuthal
-    orientation of the half-vector. ``phi_h`` can therefore be set to zero
-    without loss of information about the BRDF value.
-
-    Parameters
-    ----------
-    theta_h : array_like, (, )
-        Polar angle of the half-vector. Passed through unchanged.
-    theta_d : array_like, (, )
-        Polar angle of the incident direction in the half-vector local
-        frame. Passed through unchanged.
-    phi_d : array_like, (, )
-        Azimuthal angle of the incident direction in the half-vector
-        local frame. Passed through unchanged.
-
-    Returns
-    -------
-    theta_h : jax.Array, (, )
-    phi_h : jax.Array, (, )
-        Azimuthal angle of the half-vector, set to zero.
-    theta_d : jax.Array, (, )
-    phi_d : jax.Array, (, )
-    """
-    phi_h = 0.0
-    return theta_h, phi_h, theta_d, phi_d

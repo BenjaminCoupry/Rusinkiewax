@@ -1,7 +1,7 @@
 import jax
 import pytest
 
-from rusinkiewax import (
+from rusinkiewax.conversions import (
     cartesian_to_spherical,
     cartesian_to_rusinkiewicz,
     rusinkiewicz_to_cartesian,
@@ -466,16 +466,6 @@ def test_theta_d_theta_h_zero_gives_normal(seed):
     assert jax.numpy.allclose(w_o, normal, atol=ATOL)
     
     
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
 @pytest.mark.parametrize("seed", range(N_TEST))
 def test_perfect_reflection_gives_theta_h_zero(seed):
     key_direction, key_normal = jax.random.split(jax.random.key(seed))
@@ -715,3 +705,189 @@ def test_normal_incident_and_outgoing_give_theta_zero(seed):
         0.0,
         atol=ATOL,
     )
+    
+    
+@pytest.mark.parametrize("seed", range(N_TEST))
+def test_cartesian_to_rusinkiewicz_tangent_and_phi_h_none_matches_tangent_given(seed):
+    key_wi, key_wo, key_normal, key_tangent = jax.random.split(
+        jax.random.key(seed),
+        4,
+    )
+    w_i = random_unit_vector(key_wi)
+    w_o = random_unit_vector(key_wo)
+    normal = random_unit_vector(key_normal)
+    tangent = random_unit_vector(key_tangent)
+
+    theta_h, _, theta_d, phi_d = cartesian_to_rusinkiewicz(
+        w_i,
+        w_o,
+        normal,
+        tangent=tangent,
+    )
+    
+    theta_h_no_tangent, phi_h_no_tangent, theta_d_no_tangent, phi_d_no_tangent = cartesian_to_rusinkiewicz(
+        w_i,
+        w_o,
+        normal,
+        tangent=None,
+    )
+    
+    w_i_test_1, w_o_test_1 = rusinkiewicz_to_cartesian(
+        theta_h,
+        None,
+        theta_d,
+        phi_d,
+        normal,
+        tangent=None,
+    )
+    
+    w_i_test_2, w_o_test_2 = rusinkiewicz_to_cartesian(
+        theta_h_no_tangent,
+        phi_h_no_tangent,
+        theta_d_no_tangent,
+        phi_d_no_tangent,
+        normal,
+        tangent=None,
+    )
+
+    assert phi_h_no_tangent is None
+    assert jax.numpy.allclose(
+        jax.numpy.dot(w_i_test_1, normal),
+        jax.numpy.dot(w_i_test_2, normal),
+        atol=ATOL,
+    )
+    assert jax.numpy.allclose(
+        jax.numpy.dot(w_o_test_1, normal),
+        jax.numpy.dot(w_o_test_2, normal),
+        atol=ATOL,
+    )
+    assert jax.numpy.allclose(
+        jax.numpy.dot(w_i_test_1, w_o_test_1),
+        jax.numpy.dot(w_i_test_2, w_o_test_2),
+        atol=ATOL,
+    )
+    assert jax.numpy.allclose(
+        jax.numpy.dot(w_i_test_1, normal),
+        jax.numpy.dot(w_i, normal),
+        atol=ATOL,
+    )
+    assert jax.numpy.allclose(
+        jax.numpy.dot(w_o_test_1, normal),
+        jax.numpy.dot(w_o, normal),
+        atol=ATOL,
+    )
+    assert jax.numpy.allclose(
+        jax.numpy.dot(w_i_test_1, w_o_test_1),
+        jax.numpy.dot(w_i, w_o),
+        atol=ATOL,
+    )
+    
+    
+@pytest.mark.parametrize("seed", range(N_TEST))
+def test_rusinkiewicz_to_cartesian_tangent_none_matches_tangent_given(seed):
+    key_rusinkiewicz, key_normal, key_tangent = jax.random.split(
+        jax.random.key(seed),
+        3,
+    )
+    theta_h, phi_h, theta_d, phi_d = random_rusinkiewicz(
+        key_rusinkiewicz
+    )
+    normal = random_unit_vector(key_normal)
+    tangent = random_unit_vector(key_tangent)
+
+    w_i, w_o = rusinkiewicz_to_cartesian(
+        theta_h,
+        phi_h,
+        theta_d,
+        phi_d,
+        normal,
+        tangent,
+    )
+    
+    w_i_no_tangent, w_o_no_tangent = rusinkiewicz_to_cartesian(
+            theta_h,
+            None,
+            theta_d,
+            phi_d,
+            normal,
+            None,
+        )
+    
+    theta_h_test_1, phi_h_test_1, theta_d_test_1, phi_d_test_1 = (
+        cartesian_to_rusinkiewicz(
+            w_i,
+            w_o,
+            normal,
+            tangent=None,
+        )
+    )
+    
+    theta_h_test_2, phi_h_test_2, theta_d_test_2, phi_d_test_2 = (
+            cartesian_to_rusinkiewicz(
+                w_i_no_tangent,
+                w_o_no_tangent,
+                normal,
+                tangent=None,
+            )
+        )
+    
+    assert phi_h_test_1 is None
+    assert phi_h_test_2 is None
+    assert jax.numpy.allclose(
+        angular_error(theta_h_test_1, theta_h_test_2),
+        0.0,
+        atol=ATOL,
+    )
+    assert jax.numpy.allclose(
+        angular_error(theta_d_test_1, theta_d_test_2),
+        0.0,
+        atol=ATOL,
+    )
+    assert jax.numpy.allclose(
+        angular_error(phi_d_test_1, phi_d_test_2),
+        0.0,
+        atol=ATOL,
+    )
+    assert jax.numpy.allclose(
+        angular_error(theta_h_test_1, theta_h),
+        0.0,
+        atol=ATOL,
+    )
+    assert jax.numpy.allclose(
+        angular_error(theta_d_test_1, theta_d),
+        0.0,
+        atol=ATOL,
+    )
+    assert jax.numpy.allclose(
+        angular_error(phi_d_test_1, phi_d),
+        0.0,
+        atol=ATOL,
+    )
+
+
+def test_rusinkiewicz_to_cartesian_raises_on_inconsistent_none():
+    theta_h = jax.numpy.pi / 4.0
+    phi_h = jax.numpy.pi / 3.0
+    theta_d = jax.numpy.pi / 6.0
+    phi_d = jax.numpy.pi / 2.0
+    normal = jax.numpy.asarray([0.0, 0.0, 1.0])
+    tangent = jax.numpy.asarray([1.0, 0.0, 0.0])
+
+    with pytest.raises(ValueError):
+        rusinkiewicz_to_cartesian(
+            theta_h,
+            phi_h,
+            theta_d,
+            phi_d,
+            normal,
+            tangent=None,
+        )
+    with pytest.raises(ValueError):
+        rusinkiewicz_to_cartesian(
+            theta_h,
+            phi_h=None,
+            theta_d=theta_d,
+            phi_d=phi_d,
+            normal=normal,
+            tangent=tangent,
+        )
