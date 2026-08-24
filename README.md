@@ -56,11 +56,8 @@ and describes the configuration using four angles:
 * `theta_h`, `phi_h`: spherical coordinates of the half-vector in the local reference frame.
 * `theta_d`, `phi_d`: spherical coordinates of the incident direction in the frame associated with the half-vector.
 
-The implementation follows the convention described in the reference below.
 
 ## Reference
-
-This implementation is based on:
 
 > Rusinkiewicz, S. M. (1998, June). A new change of variables for efficient BRDF representation. In Eurographics Workshop on Rendering Techniques (pp. 11-22). Vienna: Springer Vienna.
 
