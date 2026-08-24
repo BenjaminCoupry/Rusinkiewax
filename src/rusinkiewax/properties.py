@@ -62,5 +62,5 @@ def isotropic_material(theta_h, phi_h, theta_d, phi_d):
     theta_d : jax.Array, (, )
     phi_d : jax.Array, (, )
     """
-    phi_h = jax.numpy.zeros_like(phi_h)
+    phi_h = 0.0
     return theta_h, phi_h, theta_d, phi_d
