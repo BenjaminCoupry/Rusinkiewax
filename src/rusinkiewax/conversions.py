@@ -60,7 +60,7 @@ def cartesian_to_spherical(cartesian):
     return spherical
 
 
-def cartesian_to_rusinkiewicz(w_i, w_o, normal, tangent):
+def cartesian_to_rusinkiewicz(w_i, w_o, normal, tangent=None):
     """Convert incident and outgoing directions to Rusinkiewicz coordinates.
 
     Parameters
@@ -146,7 +146,7 @@ def rusinkiewicz_to_cartesian(
     theta_d,
     phi_d,
     normal,
-    tangent,
+    tangent=None,
 ):
     """Convert Rusinkiewicz coordinates to incident and outgoing directions.
 
